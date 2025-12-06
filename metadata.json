@@ -1,0 +1,7 @@
+{
+  "name": "Starry Night Strings",
+  "description": "An interactive audiovisual experience connecting MediaPipe gesture recognition with Van Gogh's Starry Night. Create a cosmic string between your hands and pluck it to ripple reality.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
