@@ -61,3 +61,40 @@ export interface Theme {
   points: InteractablePoint[];
   swirlIntensityMap: { [key in InteractablePoint['type']]: number };
 }
+
+// --- RHYTHM GAME TYPES ---
+
+export type JudgeResult = 'perfect' | 'good' | 'miss';
+
+export interface JudgeEvent {
+  result: JudgeResult;
+  timing: number;    // 偏差 ms，负=早，正=晚
+  timestamp: number; // 触发时间
+}
+
+// --- SONG & NOTE TYPES ---
+
+export interface SongNote {
+  time: number;           // 到达判定线的时间 (ms)
+  string: -1 | 0 | 1;     // 哪根弦 (-1=下, 0=中, 1=上)
+}
+
+export interface Song {
+  id: string;
+  title: string;
+  composer?: string;
+  audioUrl: string;
+  duration: number;       // 歌曲时长 (ms)
+  bpm: number;
+  leadTime: number;       // 音符从出现到到达判定线的时间 (ms)
+  notes: SongNote[];
+}
+
+// 运行时的音符状态
+export interface ActiveNote {
+  id: number;
+  songNote: SongNote;
+  progress: number;       // 0-1, 1=到达判定线
+  hit: boolean;           // 是否已被击中
+  missed: boolean;        // 是否已错过
+}

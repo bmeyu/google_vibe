@@ -1,0 +1,23 @@
+{
+  "id": "clair-de-lune",
+  "title": "Clair de Lune",
+  "composer": "Claude Debussy",
+  "audioUrl": "/audio/clair-de-lune-30s.mp3",
+  "duration": 30000,
+  "bpm": 66,
+  "leadTime": 2000,
+  "notes": [
+    { "time": 2000, "string": 0 },
+    { "time": 4500, "string": 1 },
+    { "time": 6800, "string": -1 },
+    { "time": 9000, "string": 0 },
+    { "time": 11500, "string": 1 },
+    { "time": 13800, "string": 0 },
+    { "time": 16000, "string": -1 },
+    { "time": 18500, "string": 1 },
+    { "time": 21000, "string": 0 },
+    { "time": 23500, "string": -1 },
+    { "time": 26000, "string": 1 },
+    { "time": 28500, "string": 0 }
+  ]
+}

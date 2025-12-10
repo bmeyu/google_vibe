@@ -3,8 +3,11 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { playPluckSound } from '../utils/audioUtils';
 import { segmentsIntersect } from '../utils/geoUtils';
-import { Point, HandLandmark, MusicalNote } from '../types';
+import { Point, HandLandmark, MusicalNote, JudgeEvent, Song, ActiveNote } from '../types';
 import { DEFAULT_THEME } from '../data/themes';
+import { getMusicPlayer } from '../utils/musicPlayer';
+import { getNoteManager } from '../utils/noteManager';
+import clairDeLuneSong from '../data/songs/clair-de-lune.json';
 
 // Define the shape of MediaPipe results locally
 interface MPResults {
@@ -42,8 +45,8 @@ const SPAWN_TIME_REQUIRED = 60; // Frames (~1s) to spawn/despawn
 const LOCK_DISTANCE_THRESHOLD = 0.55; // Must be VERY wide (55%) to lock
 const UNLOCK_DISTANCE_THRESHOLD = 0.25; // Closer to unlock
 const LOCK_TIME_REQUIRED = 30; // Frames (~0.5s)
-const STRING_SMOOTHING = 0.2; 
-const STRING_GAP = 25; 
+const STRING_SMOOTHING = 0.2;
+const STRING_GAP = 25;
 const VIBRATION_DECAY = 0.85; // Faster decay for tighter feel
 const MAX_SWIRLS = 16;
 const NOTE_SYMBOLS = ['✦', '★', '✶', '✴', '✹', '✨'];
@@ -65,14 +68,14 @@ const fragmentShader = `
   uniform sampler2D tDiffuse;
   uniform vec2 uResolution;
   uniform float uTime;
-  uniform vec3 uSwirls[${MAX_SWIRLS}]; 
+  uniform vec3 uSwirls[${MAX_SWIRLS}];
   varying vec2 vUv;
 
   void main() {
     vec2 uv = vUv;
     float aspect = uResolution.x / uResolution.y;
     vec2 totalOffset = vec2(0.0);
-    
+
     // Ambient Flow
     float ambientStrength = 0.002;
     float time = uTime * 0.5;
@@ -80,18 +83,18 @@ const fragmentShader = `
     float waveY = cos(uv.x * 10.0 + time) * sin(uv.y * 5.0 + time * 0.3);
     totalOffset += vec2(waveX, waveY) * ambientStrength;
 
-    // Interactive Swirls
+    // Interactive Swirls (保留原有漩涡效果)
     for (int i = 0; i < ${MAX_SWIRLS}; i++) {
         vec3 swirl = uSwirls[i];
         float intensity = swirl.z;
         if (intensity > 0.01) {
             vec2 center = swirl.xy;
             vec2 p = uv - center;
-            p.x *= aspect; 
+            p.x *= aspect;
             float dist = length(p);
-            float radius = 0.15 * (0.5 + intensity * 0.5); 
+            float radius = 0.15 * (0.5 + intensity * 0.5);
             float influence = smoothstep(radius, 0.0, dist);
-            float angle = influence * intensity * 8.0; 
+            float angle = influence * intensity * 8.0;
             float s = sin(angle);
             float c = cos(angle);
             vec2 offset = uv - center;
@@ -99,7 +102,9 @@ const fragmentShader = `
             totalOffset += (rotated - offset) * influence;
         }
     }
-    gl_FragColor = texture2D(tDiffuse, uv + totalOffset);
+
+    vec4 color = texture2D(tDiffuse, uv + totalOffset);
+    gl_FragColor = color;
   }
 `;
 
@@ -120,8 +125,16 @@ interface EnergyBeam {
   startY: number;
   endX: number;
   endY: number;
-  progress: number; 
+  progress: number;
   color: string;
+}
+
+interface JudgeFeedback {
+  x: number;
+  y: number;
+  result: 'perfect' | 'good' | 'miss';
+  timing: number;
+  life: number;  // 1.0 -> 0.0
 }
 
 export const StarryNightCanvas: React.FC = () => {
@@ -155,7 +168,9 @@ export const StarryNightCanvas: React.FC = () => {
   const hasSpawnToggledRef = useRef<boolean>(false); // Prevent multiple toggles in one hold
 
   const latestLandmarksRef = useRef<HandLandmark[][] | null>(null);
-  const prevFingerPosRef = useRef<Map<string, Point>>(new Map()); 
+  const prevFingerPosRef = useRef<Map<string, Point>>(new Map());
+  const latestJudgeRef = useRef<JudgeEvent | null>(null);
+  const judgeFeedbacksRef = useRef<JudgeFeedback[]>([]); 
   
   const [isLoaded, setIsLoaded] = useState(false);
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'initializing' | 'active' | 'error'>('idle');
@@ -193,13 +208,14 @@ export const StarryNightCanvas: React.FC = () => {
         if (!isMountedRef.current) return;
         texture.minFilter = THREE.LinearFilter;
         texture.magFilter = THREE.LinearFilter;
-        
+
         if (materialRef.current) {
             setIsLoaded(true);
             return;
         }
 
         const initialSwirls = new Array(MAX_SWIRLS * 3).fill(0);
+
         const geometry = new THREE.PlaneGeometry(2, 2);
         const material = new THREE.ShaderMaterial({
           uniforms: {
@@ -378,6 +394,27 @@ export const StarryNightCanvas: React.FC = () => {
     let animationFrameId: number;
     let active = true;
 
+    // 初始化音乐播放器和音符管理器
+    const musicPlayer = getMusicPlayer();
+    const noteManager = getNoteManager();
+
+    // 只在首次加载歌曲（检查是否已加载）
+    if (!noteManager.getSong()) {
+      const song = clairDeLuneSong as Song;
+      noteManager.loadSong(song);
+      musicPlayer.loadSong(song).catch(err => {
+        console.warn('音频加载失败，将以静音模式运行:', err);
+      });
+    }
+
+    // 根据 isLocked 状态控制音乐播放（核心修复！）
+    if (isLocked && isStringsActive) {
+      musicPlayer.play();
+    } else {
+      musicPlayer.stop();
+      noteManager.reset();
+    }
+
     const render = () => {
       if (!active) return;
       timeRef.current += 0.01;
@@ -389,9 +426,17 @@ export const StarryNightCanvas: React.FC = () => {
           if (swirl.intensity <= 0) swirlsRef.current.splice(i, 1);
       }
 
+      // 更新音符状态（仅在锁定模式下）
+      let activeNotes: ActiveNote[] = [];
+      if (musicPlayer.isPlaying) {
+        const currentTime = musicPlayer.getCurrentTime();
+        activeNotes = noteManager.update(currentTime);
+      }
+
       // WebGL Render
       if (rendererRef.current && sceneRef.current && cameraRef.current && materialRef.current) {
         materialRef.current.uniforms.uTime.value = timeRef.current;
+
         const swirlUniforms = new Float32Array(MAX_SWIRLS * 3);
         for(let i=0; i<MAX_SWIRLS; i++) {
             if (i < swirlsRef.current.length) {
@@ -486,16 +531,18 @@ export const StarryNightCanvas: React.FC = () => {
                                 p2: currentStringCoordsRef.current ? currentStringCoordsRef.current.p2 : detectedP2
                             };
                             lockProgressFrameCounter.current = 0;
+                            // 音乐会在 useEffect 中根据 isLocked 状态自动播放
                         }
                     } else {
                          lockProgressFrameCounter.current = 0;
                     }
                 }
-                
+
                 // 3. UNLOCK LOGIC
                 if (isLocked && dist < UNLOCK_DISTANCE_THRESHOLD) {
                     setIsLocked(false);
                     lockedStringDataRef.current = null;
+                    // 音乐会在 useEffect 中根据 isLocked 状态自动停止
                 }
             }
         } else {
@@ -607,17 +654,17 @@ export const StarryNightCanvas: React.FC = () => {
             currentStringLines.forEach((line) => {
               const vibIndex = line.index === 1 ? 0 : line.index === 0 ? 1 : 2;
               const vibration = stringVibrationRef.current[vibIndex] || 0;
-              
+
               // Use Theme Colors for Strings
-              let color = lockedStringDataRef.current 
+              let color = lockedStringDataRef.current
                   ? CURRENT_THEME.colors.primary // Locked
                   : CURRENT_THEME.colors.secondary; // Active
-              
+
               // Fade opacity slightly for the "glow" pass inside the function
-              color = color + 'FF'; 
+              color = color + 'FF';
 
               drawCosmicString(overlayCtx, line.p1, line.p2, color, vibration);
-              
+
               // Endpoints
               overlayCtx.fillStyle = '#fff';
               overlayCtx.beginPath();
@@ -625,6 +672,83 @@ export const StarryNightCanvas: React.FC = () => {
               overlayCtx.arc(line.p2.x, line.p2.y, 4, 0, Math.PI*2);
               overlayCtx.fill();
             });
+
+            // === 绘制音符和判定线（仅在锁定模式下） ===
+            if (lockedStringDataRef.current) {
+              const p1 = lockedStringDataRef.current.p1;
+              const p2 = lockedStringDataRef.current.p2;
+
+              // 计算弦的方向向量
+              const dx = p2.x - p1.x;
+              const dy = p2.y - p1.y;
+              const length = Math.sqrt(dx * dx + dy * dy);
+              const ux = dx / length; // 单位方向向量
+              const uy = dy / length;
+              const px = -uy; // 垂直向量
+              const py = ux;
+
+              // 判定线位置（弦中点）
+              const judgeLine = 0.5;
+
+              // 绘制判定线（始终显示）
+              const judgeX = p1.x + dx * judgeLine;
+              const judgeY = p1.y + dy * judgeLine;
+              overlayCtx.save();
+              overlayCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+              overlayCtx.lineWidth = 3;
+              overlayCtx.shadowColor = '#fff';
+              overlayCtx.shadowBlur = 10;
+              overlayCtx.beginPath();
+              overlayCtx.moveTo(judgeX + px * (STRING_GAP + 20), judgeY + py * (STRING_GAP + 20));
+              overlayCtx.lineTo(judgeX - px * (STRING_GAP + 20), judgeY - py * (STRING_GAP + 20));
+              overlayCtx.stroke();
+              overlayCtx.restore();
+
+              // 绘制音符
+              activeNotes.forEach(note => {
+                if (note.hit || note.missed) return;
+
+                // 计算音符在弦上的位置（从左到右滑动）
+                const t = note.progress; // 0 = 起点, 1 = 判定线
+
+                // 根据音符所在弦计算偏移
+                const stringOffset = note.songNote.string * STRING_GAP;
+
+                // 音符位置：从起点滑向判定线，再继续向终点
+                const noteT = t * judgeLine; // 0 到 0.5 时到达判定线
+                const noteX = p1.x + dx * noteT + px * stringOffset;
+                const noteY = p1.y + dy * noteT + py * stringOffset;
+
+                // 绘制音符
+                overlayCtx.save();
+
+                // 根据接近判定线的程度调整大小和亮度
+                const distToJudge = Math.abs(note.progress - 1);
+                const scale = 1 + (1 - Math.min(distToJudge, 0.5) * 2) * 0.3;
+                const alpha = Math.max(0.3, Math.min(1, note.progress * 2)); // 渐入效果，最小30%可见
+
+                overlayCtx.globalAlpha = alpha;
+                overlayCtx.fillStyle = '#FFD700';
+                overlayCtx.shadowColor = '#FFA500';
+                overlayCtx.shadowBlur = 15 * scale;
+
+                // 绘制星形音符（5角星）
+                const size = 14 * scale;
+                overlayCtx.beginPath();
+                for (let i = 0; i < 10; i++) {
+                  const angle = (i * Math.PI / 5) - Math.PI / 2;
+                  const r = i % 2 === 0 ? size : size * 0.4;
+                  const x = noteX + Math.cos(angle) * r;
+                  const y = noteY + Math.sin(angle) * r;
+                  if (i === 0) overlayCtx.moveTo(x, y);
+                  else overlayCtx.lineTo(x, y);
+                }
+                overlayCtx.closePath();
+                overlayCtx.fill();
+
+                overlayCtx.restore();
+              });
+            }
 
             // Pluck Logic
             if (landmarksData && currentStringLines.length > 0) {
@@ -642,15 +766,66 @@ export const StarryNightCanvas: React.FC = () => {
                             currentStringLines.forEach((line) => {
                                if (segmentsIntersect(line.p1, line.p2, prevOverlay, pOverlay)) {
                                    if (now - lastPluckTimeRef.current > PLUCK_COOLDOWN) {
+                                      // === 音符判定（锁定模式）或自由拨弦 ===
+                                      const stringIndex = line.index as -1 | 0 | 1;
+                                      let judgeResult: 'perfect' | 'good' | 'miss' = 'good';
+                                      let swirlMultiplier = 1.0;
+                                      let noteCount = 1;
+
+                                      // 如果在锁定模式（音乐播放中），尝试击中音符
+                                      if (musicPlayer.isPlaying) {
+                                        const hitResult = noteManager.tryHitNote(stringIndex);
+                                        if (hitResult) {
+                                          judgeResult = hitResult.result;
+                                          if (judgeResult === 'perfect') {
+                                            swirlMultiplier = 1.5;
+                                            noteCount = 2;
+                                          } else if (judgeResult === 'miss') {
+                                            swirlMultiplier = 0.5;
+                                          }
+                                        } else {
+                                          // 没有音符可击中，视为 miss
+                                          judgeResult = 'miss';
+                                          swirlMultiplier = 0.5;
+                                        }
+
+                                        // 添加判定反馈文字
+                                        judgeFeedbacksRef.current.push({
+                                          x: pOverlay.x,
+                                          y: pOverlay.y - 20,
+                                          result: judgeResult,
+                                          timing: 0,
+                                          life: 1.0
+                                        });
+                                      }
+
                                       // Play Sound from Theme Instrument
                                       playPluckSound(landmarks[tipIdx].x, line.index * 3, CURRENT_THEME.instrument);
-                                      
+
                                       const vibIndex = line.index === 1 ? 0 : line.index === 0 ? 1 : 2;
-                                      stringVibrationRef.current[vibIndex] = 20; // Harder pluck
-                                      
-                                      const noteColor = CURRENT_THEME.colors.note;
-                                      notesRef.current.push({ id: Math.random(), x: pOverlay.x, y: pOverlay.y, vx: (Math.random() - 0.5) * 2, vy: -2 - Math.random(), symbol: NOTE_SYMBOLS[Math.floor(Math.random() * NOTE_SYMBOLS.length)], life: 1.0, opacity: 1.0, color: noteColor });
-                                      
+                                      stringVibrationRef.current[vibIndex] = judgeResult === 'perfect' ? 25 : judgeResult === 'miss' ? 12 : 20;
+
+                                      const noteColor = judgeResult === 'perfect'
+                                        ? '#FFD700' // 金色 for Perfect
+                                        : judgeResult === 'miss'
+                                          ? 'rgba(150, 150, 180, 0.7)' // 暗淡灰色 for Miss
+                                          : CURRENT_THEME.colors.note;
+
+                                      // 生成音符粒子（数量根据判定变化）
+                                      for (let n = 0; n < noteCount; n++) {
+                                        notesRef.current.push({
+                                          id: Math.random(),
+                                          x: pOverlay.x + (n > 0 ? (Math.random() - 0.5) * 30 : 0),
+                                          y: pOverlay.y + (n > 0 ? (Math.random() - 0.5) * 30 : 0),
+                                          vx: (Math.random() - 0.5) * 2,
+                                          vy: -2 - Math.random(),
+                                          symbol: NOTE_SYMBOLS[Math.floor(Math.random() * NOTE_SYMBOLS.length)],
+                                          life: 1.0,
+                                          opacity: 1.0,
+                                          color: noteColor
+                                        });
+                                      }
+
                                       // Find closest themed point
                                       let closestPoint = CURRENT_THEME.points[0];
                                       let minDist = 1000;
@@ -662,11 +837,18 @@ export const StarryNightCanvas: React.FC = () => {
                                           const d = Math.sqrt(dx*dx + dy*dy);
                                           if (d < minDist) { minDist = d; closestPoint = point; }
                                       });
-                                      
-                                      beamsRef.current.push({ startX: pOverlay.x, startY: pOverlay.y, endX: closestPoint.x * overlayW, endY: closestPoint.y * overlayH, progress: 0, color: CURRENT_THEME.colors.beam });
-                                      
-                                      const intensity = CURRENT_THEME.swirlIntensityMap[closestPoint.type] || 1.0;
-                                      swirlsRef.current.push({ x: closestPoint.x, y: 1.0 - closestPoint.y, intensity: intensity, decaySpeed: 0.005 });
+
+                                      // 光束颜色根据判定变化
+                                      const beamColor = judgeResult === 'perfect'
+                                        ? '#FFD700' // 金色
+                                        : judgeResult === 'miss'
+                                          ? 'rgba(100, 100, 130, 0.5)'
+                                          : CURRENT_THEME.colors.beam;
+
+                                      beamsRef.current.push({ startX: pOverlay.x, startY: pOverlay.y, endX: closestPoint.x * overlayW, endY: closestPoint.y * overlayH, progress: 0, color: beamColor });
+
+                                      const intensity = (CURRENT_THEME.swirlIntensityMap[closestPoint.type] || 1.0) * swirlMultiplier;
+                                      swirlsRef.current.push({ x: closestPoint.x, y: 1.0 - closestPoint.y, intensity: intensity, decaySpeed: judgeResult === 'perfect' ? 0.003 : 0.005 });
                                       if (swirlsRef.current.length > MAX_SWIRLS) swirlsRef.current.shift();
 
                                       lastPluckTimeRef.current = now;
@@ -688,11 +870,62 @@ export const StarryNightCanvas: React.FC = () => {
           note.life -= 0.01;
           note.opacity = Math.max(0, note.life);
           overlayCtx.save();
-          overlayCtx.font = `${20 + (1-note.life)*10}px serif`; 
+          overlayCtx.font = `${20 + (1-note.life)*10}px serif`;
           overlayCtx.shadowColor = note.color;
           overlayCtx.shadowBlur = 10;
           overlayCtx.fillStyle = note.color.replace(/[\d\.]+\)$/g, `${note.opacity})`);
           overlayCtx.fillText(note.symbol, note.x, note.y);
+          overlayCtx.restore();
+        });
+
+        // Render Judgment Feedback Text
+        // 注意: overlay canvas 使用 CSS scaleX(-1) 镜像，所以文字需要再次翻转才能正常显示
+        judgeFeedbacksRef.current = judgeFeedbacksRef.current.filter(f => f.life > 0);
+        judgeFeedbacksRef.current.forEach(feedback => {
+          feedback.life -= 0.025; // ~0.5秒淡出 (约30帧)
+          feedback.y -= 1.5; // 向上飘动
+
+          const opacity = Math.max(0, feedback.life);
+          const textScale = 1 + (1 - feedback.life) * 0.3; // 轻微放大
+
+          overlayCtx.save();
+          overlayCtx.globalAlpha = opacity;
+
+          // 在文字位置应用水平翻转，抵消 CSS 的 scaleX(-1)
+          overlayCtx.translate(feedback.x, feedback.y);
+          overlayCtx.scale(-1, 1);
+
+          overlayCtx.textAlign = 'center';
+
+          // 根据判定结果设置样式
+          let text = '';
+          let color = '#FFFFFF';
+          let glowColor = '#FFFFFF';
+          let fontSize = 16;
+
+          if (feedback.result === 'perfect') {
+            text = '✦ PERFECT ✦';
+            color = '#FFD700';
+            glowColor = '#FFA500';
+            fontSize = 20;
+          } else if (feedback.result === 'good') {
+            text = 'GOOD';
+            color = '#90EE90';
+            glowColor = '#32CD32';
+            fontSize = 16;
+          } else {
+            text = 'miss';
+            color = 'rgba(150, 150, 170, 0.8)';
+            glowColor = 'rgba(100, 100, 120, 0.5)';
+            fontSize = 14;
+          }
+
+          overlayCtx.font = `italic ${fontSize * textScale}px serif`;
+          overlayCtx.shadowColor = glowColor;
+          overlayCtx.shadowBlur = feedback.result === 'perfect' ? 20 : feedback.result === 'good' ? 10 : 5;
+          overlayCtx.fillStyle = color;
+          overlayCtx.fillText(text, 0, 0); // 位置已通过 translate 设置
+
           overlayCtx.restore();
         });
       }
@@ -701,7 +934,11 @@ export const StarryNightCanvas: React.FC = () => {
     };
 
     render();
-    return () => { active = false; cancelAnimationFrame(animationFrameId); };
+    return () => {
+      active = false;
+      cancelAnimationFrame(animationFrameId);
+      // 不在这里停止音乐，由 effect body 根据状态控制
+    };
   }, [isLoaded, isStringsActive, isLocked]);
 
   const startCamera = async () => {
