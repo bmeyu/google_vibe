@@ -1,30 +1,109 @@
 import React, { useState } from 'react';
 import { StarryNightCanvas } from './components/StarryNightCanvas';
+import { GuernicaR3F } from './components/guernica/GuernicaR3F';
+
+type ExperienceType = 'landing' | 'starry-night' | 'guernica';
 
 const App: React.FC = () => {
-  const [started, setStarted] = useState(false);
+  const [currentView, setCurrentView] = useState<ExperienceType>('landing');
 
+  // Unified Landing Page
+  if (currentView === 'landing') {
+    return (
+      <div className="relative w-screen h-screen overflow-hidden bg-black">
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center text-white">
+          {/* Main Title */}
+          <h1 className="text-4xl md:text-6xl font-light mb-4 tracking-[0.3em] text-white/90 drop-shadow-lg text-center">
+            INTERACTIVE ART
+          </h1>
+          <p className="text-gray-500 text-sm tracking-widest mb-16 uppercase">
+            Hand Gesture Experiences
+          </p>
+
+          {/* Two Experience Cards */}
+          <div className="flex flex-col md:flex-row gap-8 md:gap-12 px-4">
+            {/* Van Gogh Card */}
+            <button
+              onClick={() => setCurrentView('starry-night')}
+              className="group relative w-80 h-64 rounded-2xl overflow-hidden border border-yellow-500/30 hover:border-yellow-400/60 transition-all duration-500 hover:scale-105"
+            >
+              {/* Background Image */}
+              <div
+                className="absolute inset-0 bg-cover bg-center opacity-60 group-hover:opacity-80 transition-opacity duration-500"
+                style={{ backgroundImage: 'url(https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Starry_Night_Over_the_Rhone.jpg/800px-Starry_Night_Over_the_Rhone.jpg)' }}
+              />
+              {/* Gradient Overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+              {/* Content */}
+              <div className="absolute bottom-0 left-0 right-0 p-6 text-left">
+                <h2 className="text-2xl font-light text-yellow-100 tracking-wider mb-2">
+                  STARRY STRINGS
+                </h2>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  Van Gogh · Starry Night Over the Rhône
+                </p>
+                <p className="text-gray-500 text-xs mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  Pluck cosmic strings to create music
+                </p>
+              </div>
+              {/* Glow Effect */}
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
+                <div className="absolute inset-0 shadow-[inset_0_0_60px_rgba(255,200,100,0.3)]" />
+              </div>
+            </button>
+
+            {/* Picasso Card */}
+            <button
+              onClick={() => setCurrentView('guernica')}
+              className="group relative w-80 h-64 rounded-2xl overflow-hidden border border-cyan-500/30 hover:border-cyan-400/60 transition-all duration-500 hover:scale-105"
+            >
+              {/* Background Image */}
+              <div
+                className="absolute inset-0 bg-cover bg-center opacity-60 group-hover:opacity-80 transition-opacity duration-500 grayscale"
+                style={{ backgroundImage: 'url(/images/Guernica.png)' }}
+              />
+              {/* Gradient Overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+              {/* Content */}
+              <div className="absolute bottom-0 left-0 right-0 p-6 text-left">
+                <h2 className="text-2xl font-mono text-gray-200 tracking-wider mb-2">
+                  GUERNICA SHATTERED
+                </h2>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  Picasso · Guernica 1937
+                </p>
+                <p className="text-gray-500 text-xs mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  Air drum to shatter the painting
+                </p>
+              </div>
+              {/* Glow Effect */}
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
+                <div className="absolute inset-0 shadow-[inset_0_0_60px_rgba(0,255,255,0.2)]" />
+              </div>
+            </button>
+          </div>
+
+          {/* Footer */}
+          <div className="absolute bottom-8 text-gray-600 text-xs tracking-wider">
+            Use hand gestures to interact with masterpieces
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Experience Views
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-black">
-      {!started ? (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 text-white backdrop-blur-sm transition-opacity duration-700">
-          <h1 className="text-5xl font-light mb-8 tracking-widest text-yellow-100 drop-shadow-lg text-center">
-            STARRY STRINGS
-          </h1>
-          <p className="max-w-md text-center text-gray-300 mb-8 leading-relaxed">
-            Hold up both hands to create a cosmic string. <br />
-            Use your fingers to pluck the string and swirl the stars.
-          </p>
-          <button
-            onClick={() => setStarted(true)}
-            className="px-8 py-3 border border-yellow-200/50 rounded-full text-lg hover:bg-yellow-900/30 hover:border-yellow-100 transition-all duration-300 uppercase tracking-widest"
-          >
-            Enter Experience
-          </button>
-        </div>
-      ) : (
-        <StarryNightCanvas />
-      )}
+      {currentView === 'guernica' ? <GuernicaR3F /> : <StarryNightCanvas />}
+
+      {/* Back Button */}
+      <button
+        onClick={() => setCurrentView('landing')}
+        className="absolute top-6 left-6 z-50 px-4 py-2 bg-black/40 backdrop-blur-sm border border-white/20 rounded-full text-white/60 text-xs tracking-wider hover:bg-black/60 hover:text-white/90 hover:border-white/40 transition-all duration-300"
+      >
+        ← Back
+      </button>
     </div>
   );
 };

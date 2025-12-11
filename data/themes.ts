@@ -48,5 +48,45 @@ export const THEME_STARRY_NIGHT_RHONE: Theme = {
   ]
 };
 
+// --- Guernica Drum Theme ---
+export const THEME_GUERNICA: Theme = {
+  id: 'guernica',
+  name: 'Guernica - Drum Mode',
+  // Local image for reliability (download Guernica and place in public/images/)
+  backgroundUrl: '/images/Guernica.png',
+  interactionMode: 'drum',
+
+  colors: {
+    primary: '#00ffff',    // 霓虹青（骨骼线、鼓边框）
+    secondary: '#ffffff',  // 白色（高亮）
+    text: '#ffffff',
+    note: 'rgba(200, 200, 200, 0.9)',  // 灰色
+    beam: 'rgba(100, 100, 100, 1.0)'
+  },
+
+  instrument: {
+    oscillatorType: 'sine',  // 鼓声用正弦波
+    attack: 0.005,           // 极快攻击
+    decay: 0.25,             // 快速衰减
+    filterFreqStart: 3000,
+    filterFreqEnd: 150
+  },
+
+  swirlIntensityMap: {
+    sky: 0.5,
+    lamp: 0.5,
+    other: 0.5
+  },
+
+  // 格尔尼卡不需要interactable points（改用鼓）
+  points: []
+};
+
 // You can add more themes here in the future
 export const DEFAULT_THEME = THEME_STARRY_NIGHT_RHONE;
+
+// Theme map for URL-based switching
+export const THEMES: { [key: string]: Theme } = {
+  'starry-night': THEME_STARRY_NIGHT_RHONE,
+  'guernica': THEME_GUERNICA,
+};

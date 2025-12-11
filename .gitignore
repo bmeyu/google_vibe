@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Reference implementation (not part of main project)
+guernica-reconstructed_-air-drumming/
+guernica-reconstructed_-air-drumming.zip
