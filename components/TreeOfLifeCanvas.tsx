@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { playGuitarChord } from '../utils/audioUtils';
 import { segmentsIntersect } from '../utils/geoUtils';
+import { loadSoundfontGuitar, playSoundfontChord } from '../utils/soundfontGuitar';
 import { Point, HandLandmark, MusicalNote } from '../types';
 import { THEME_TREE_OF_LIFE } from '../data/themes';
 
@@ -231,6 +232,10 @@ export const TreeOfLifeCanvas: React.FC = () => {
   // Melody preset index
   const [melodyIndex, setMelodyIndex] = useState<number>(0);
 
+  // SoundFont guitar (runtime loaded)
+  const soundfontGuitarRef = useRef<Awaited<ReturnType<typeof loadSoundfontGuitar>> | null>(null);
+  const soundfontLoadStartedRef = useRef(false);
+
   // Mode switch gesture tracking
   const pinchStartTimeRef = useRef<number | null>(null);
   const pinchHasToggledRef = useRef<boolean>(false);
@@ -241,6 +246,19 @@ export const TreeOfLifeCanvas: React.FC = () => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
+
+  useEffect(() => {
+    if (!isGuitarActive) return;
+    if (soundfontGuitarRef.current || soundfontLoadStartedRef.current) return;
+    soundfontLoadStartedRef.current = true;
+    void loadSoundfontGuitar()
+      .then(inst => {
+        soundfontGuitarRef.current = inst;
+      })
+      .catch(() => {
+        soundfontLoadStartedRef.current = false;
+      });
+  }, [isGuitarActive]);
 
   // Initialize Three.js Scene
   useEffect(() => {
@@ -967,7 +985,21 @@ export const TreeOfLifeCanvas: React.FC = () => {
                       const melody = MELODIES[melodyIndex] ?? MELODIES[0];
                       const chord = melody.chords[chordIndexRef.current % melody.chords.length];
                       currentChordRef.current = chord.name;
-                      playGuitarChord(chord.notes, 20);
+                      if (soundfontGuitarRef.current) {
+                        playSoundfontChord(soundfontGuitarRef.current, chord.notes, { strumMs: 20, gain: 0.85 });
+                      } else {
+                        if (!soundfontLoadStartedRef.current) {
+                          soundfontLoadStartedRef.current = true;
+                          void loadSoundfontGuitar()
+                            .then(inst => {
+                              soundfontGuitarRef.current = inst;
+                            })
+                            .catch(() => {
+                              soundfontLoadStartedRef.current = false;
+                            });
+                        }
+                        playGuitarChord(chord.notes, 20);
+                      }
                       chordIndexRef.current = (chordIndexRef.current + 1) % melody.chords.length;
 
                       // Vibrate strings
