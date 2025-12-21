@@ -189,16 +189,15 @@ export const StarryNightCanvas: React.FC = () => {
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     cameraRef.current = camera;
 
+    // Track if this effect instance is still valid
+    let isEffectValid = true;
+
     const initMaterial = (texture: THREE.Texture) => {
-        if (!isMountedRef.current) return;
+        if (!isMountedRef.current || !isEffectValid) return;
         texture.minFilter = THREE.LinearFilter;
         texture.magFilter = THREE.LinearFilter;
-        
-        if (materialRef.current) {
-            setIsLoaded(true);
-            return;
-        }
 
+        // Always create new material for this effect instance
         const initialSwirls = new Array(MAX_SWIRLS * 3).fill(0);
         const geometry = new THREE.PlaneGeometry(2, 2);
         const material = new THREE.ShaderMaterial({
@@ -272,9 +271,16 @@ export const StarryNightCanvas: React.FC = () => {
     };
     window.addEventListener('resize', handleResize);
     return () => {
+      // Invalidate this effect instance to prevent stale texture callbacks
+      isEffectValid = false;
       clearTimeout(timeoutId);
       window.removeEventListener('resize', handleResize);
       renderer.dispose();
+      // Reset refs on cleanup to handle component switching
+      materialRef.current = null;
+      rendererRef.current = null;
+      sceneRef.current = null;
+      cameraRef.current = null;
     };
   }, []);
 

@@ -4,7 +4,7 @@ import { Theme } from '../types';
 export const THEME_STARRY_NIGHT_RHONE: Theme = {
   id: 'starry-night-rhone',
   name: 'Starry Night Over the Rhône',
-  backgroundUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Starry_Night_Over_the_Rhone.jpg/2560px-Starry_Night_Over_the_Rhone.jpg',
+  backgroundUrl: '/images/StarryNight.jpg',
   
   colors: {
     primary: '#00ffff', // Cyan for magic/locking
@@ -45,6 +45,64 @@ export const THEME_STARRY_NIGHT_RHONE: Theme = {
     { x: 0.65, y: 0.40, size: 1.3, type: 'lamp' },
     { x: 0.78, y: 0.39, size: 1.4, type: 'lamp' },
     { x: 0.91, y: 0.43, size: 1.5, type: 'lamp' },
+  ]
+};
+
+// --- Tree of Life Theme (Klimt) ---
+export const THEME_TREE_OF_LIFE: Theme = {
+  id: 'tree-of-life',
+  name: 'Tree of Life',
+  backgroundUrl: '/images/TreeOfLife.png',
+
+  colors: {
+    primary: '#d4a84b',      // 金色（锁定/魔法效果）
+    secondary: '#e8a849',    // 琥珀色（激活状态）
+    text: '#ffffff',
+    note: 'rgba(232, 168, 73, 0.9)',  // 金色音符
+    beam: 'rgba(212, 168, 75, 1.0)'   // 金色光束
+  },
+
+  instrument: {
+    oscillatorType: 'sawtooth',  // 吉他感
+    attack: 0.01,                // 快速起音
+    decay: 1.2,                  // 中等衰减
+    filterFreqStart: 1200,       // 明亮起始
+    filterFreqEnd: 300           // 温暖结束
+  },
+
+  swirlIntensityMap: {
+    spiral: 1.2,    // 螺旋装饰
+    branch: 0.8,    // 树枝区域
+    other: 0.6
+  },
+
+  points: [
+    // 约20个螺旋装饰点位（normalized 0-1 坐标）
+    // 左上区域
+    { x: 0.08, y: 0.15, size: 1.0, type: 'spiral' },
+    { x: 0.15, y: 0.10, size: 1.1, type: 'spiral' },
+    { x: 0.12, y: 0.28, size: 1.2, type: 'spiral' },
+    { x: 0.05, y: 0.38, size: 0.9, type: 'spiral' },
+    // 中上区域
+    { x: 0.32, y: 0.08, size: 1.0, type: 'spiral' },
+    { x: 0.42, y: 0.12, size: 1.1, type: 'spiral' },
+    { x: 0.50, y: 0.06, size: 1.0, type: 'spiral' },
+    { x: 0.48, y: 0.22, size: 1.3, type: 'spiral' },
+    // 右上区域
+    { x: 0.62, y: 0.10, size: 1.0, type: 'spiral' },
+    { x: 0.72, y: 0.08, size: 1.1, type: 'spiral' },
+    { x: 0.85, y: 0.15, size: 1.0, type: 'spiral' },
+    { x: 0.92, y: 0.25, size: 0.9, type: 'spiral' },
+    // 中部区域
+    { x: 0.22, y: 0.45, size: 1.0, type: 'branch' },
+    { x: 0.78, y: 0.42, size: 1.0, type: 'branch' },
+    { x: 0.35, y: 0.35, size: 1.1, type: 'spiral' },
+    { x: 0.65, y: 0.32, size: 1.1, type: 'spiral' },
+    // 下部区域
+    { x: 0.18, y: 0.72, size: 0.9, type: 'spiral' },
+    { x: 0.50, y: 0.68, size: 1.0, type: 'branch' },
+    { x: 0.82, y: 0.70, size: 0.9, type: 'spiral' },
+    { x: 0.45, y: 0.85, size: 0.8, type: 'other' },
   ]
 };
 
@@ -89,4 +147,5 @@ export const DEFAULT_THEME = THEME_STARRY_NIGHT_RHONE;
 export const THEMES: { [key: string]: Theme } = {
   'starry-night': THEME_STARRY_NIGHT_RHONE,
   'guernica': THEME_GUERNICA,
+  'tree-of-life': THEME_TREE_OF_LIFE,
 };
