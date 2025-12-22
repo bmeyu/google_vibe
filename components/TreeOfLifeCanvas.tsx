@@ -1,9 +1,9 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
-import { playGuitarChord } from '../utils/audioUtils';
+import { initAudio, playGuitarNote } from '../utils/audioUtils';
 import { segmentsIntersect } from '../utils/geoUtils';
-import { loadSoundfontGuitar, playSoundfontChord } from '../utils/soundfontGuitar';
+import { loadSoundfontGuitar, frequencyToMidi } from '../utils/soundfontGuitar';
 import { Point, HandLandmark, MusicalNote } from '../types';
 import { THEME_TREE_OF_LIFE } from '../data/themes';
 
@@ -35,7 +35,11 @@ declare global {
 
 // --- CONFIG ---
 const CURRENT_THEME = THEME_TREE_OF_LIFE;
-const STRUM_COOLDOWN = 400; // ms between strums
+const STRUM_COOLDOWN = 1100; // ms between phrases
+const PICK_STEP_MS = 280; // ~8th-note feel at a mid tempo
+const PICK_SUSTAIN_SEC = 1.4;
+const PICK_PATTERN_TRIAD = [0, 1, 2, 1, 0, 1, 2, 1];
+const PICK_PATTERN_EXT = [0, 1, 3, 2, 0, 1, 3, 2];
 
 // --- INTERACTION CONSTANTS ---
 const SPAWN_DISTANCE_THRESHOLD = 0.08;
@@ -53,14 +57,34 @@ const MELODIES: MelodyPreset[] = [
     id: 'canon-in-d',
     name: '♫ Canon in D',
     chords: [
-      { name: 'D', notes: [293.66, 369.99, 440.00] },   // D4, F#4, A4
-      { name: 'A', notes: [220.00, 277.18, 329.63] },   // A3, C#4, E4
-      { name: 'Bm', notes: [246.94, 293.66, 369.99] },  // B3, D4, F#4
-      { name: 'F#m', notes: [185.00, 220.00, 277.18] }, // F#3, A3, C#4
-      { name: 'G', notes: [196.00, 246.94, 293.66] },   // G3, B3, D4
-      { name: 'D', notes: [293.66, 369.99, 440.00] },   // D4, F#4, A4
-      { name: 'G', notes: [196.00, 246.94, 293.66] },   // G3, B3, D4
-      { name: 'A', notes: [220.00, 277.18, 329.63] },   // A3, C#4, E4
+      // A (1-8)
+      { name: 'D', notes: [293.66, 369.99, 440.00] },
+      { name: 'A', notes: [220.00, 277.18, 329.63] },
+      { name: 'Bm', notes: [246.94, 293.66, 369.99] },
+      { name: 'F#m', notes: [185.00, 220.00, 277.18] },
+      { name: 'G', notes: [196.00, 246.94, 293.66] },
+      { name: 'D', notes: [293.66, 369.99, 440.00] },
+      { name: 'G', notes: [196.00, 246.94, 293.66] },
+      { name: 'A', notes: [220.00, 277.18, 329.63] },
+      // A' (9-16)
+      { name: 'D(add9)', notes: [293.66, 329.63, 369.99, 440.00] },
+      { name: 'A', notes: [220.00, 277.18, 329.63] },
+      { name: 'Bm7', notes: [246.94, 293.66, 369.99, 440.00] },
+      { name: 'F#m7', notes: [185.00, 220.00, 277.18, 329.63] },
+      { name: 'G', notes: [196.00, 246.94, 293.66] },
+      { name: 'D', notes: [293.66, 369.99, 440.00] },
+      { name: 'Em7', notes: [164.81, 196.00, 246.94, 293.66] },
+      { name: 'A', notes: [220.00, 277.18, 329.63] },
+      // B (17-20)
+      { name: 'Bm7', notes: [246.94, 293.66, 369.99, 440.00] },
+      { name: 'G', notes: [196.00, 246.94, 293.66] },
+      { name: 'D', notes: [293.66, 369.99, 440.00] },
+      { name: 'A', notes: [220.00, 277.18, 329.63] },
+      // A return (21-24)
+      { name: 'D', notes: [293.66, 369.99, 440.00] },
+      { name: 'A', notes: [220.00, 277.18, 329.63] },
+      { name: 'Bm', notes: [246.94, 293.66, 369.99] },
+      { name: 'A', notes: [220.00, 277.18, 329.63] },
     ],
   },
   {
@@ -259,6 +283,40 @@ export const TreeOfLifeCanvas: React.FC = () => {
         soundfontLoadStartedRef.current = false;
       });
   }, [isGuitarActive]);
+
+  const playFingerpickedChord = (notes: number[]) => {
+    const sortedNotes = [...notes].sort((a, b) => a - b);
+    const pattern = sortedNotes.length >= 4 ? PICK_PATTERN_EXT : PICK_PATTERN_TRIAD;
+    const now = initAudio().currentTime;
+
+    if (soundfontGuitarRef.current) {
+      pattern.forEach((noteIndex, step) => {
+        const freq = sortedNotes[Math.min(noteIndex, sortedNotes.length - 1)];
+        const when = now + (step * PICK_STEP_MS) / 1000;
+        soundfontGuitarRef.current?.play(frequencyToMidi(freq), when, {
+          duration: PICK_SUSTAIN_SEC,
+          gain: 0.7,
+        });
+      });
+      return;
+    }
+
+    if (!soundfontLoadStartedRef.current) {
+      soundfontLoadStartedRef.current = true;
+      void loadSoundfontGuitar()
+        .then(inst => {
+          soundfontGuitarRef.current = inst;
+        })
+        .catch(() => {
+          soundfontLoadStartedRef.current = false;
+        });
+    }
+
+    pattern.forEach((noteIndex, step) => {
+      const freq = sortedNotes[Math.min(noteIndex, sortedNotes.length - 1)];
+      setTimeout(() => playGuitarNote(freq, 0.08), step * PICK_STEP_MS);
+    });
+  };
 
   // Initialize Three.js Scene
   useEffect(() => {
@@ -985,21 +1043,7 @@ export const TreeOfLifeCanvas: React.FC = () => {
                       const melody = MELODIES[melodyIndex] ?? MELODIES[0];
                       const chord = melody.chords[chordIndexRef.current % melody.chords.length];
                       currentChordRef.current = chord.name;
-                      if (soundfontGuitarRef.current) {
-                        playSoundfontChord(soundfontGuitarRef.current, chord.notes, { strumMs: 20, gain: 0.85 });
-                      } else {
-                        if (!soundfontLoadStartedRef.current) {
-                          soundfontLoadStartedRef.current = true;
-                          void loadSoundfontGuitar()
-                            .then(inst => {
-                              soundfontGuitarRef.current = inst;
-                            })
-                            .catch(() => {
-                              soundfontLoadStartedRef.current = false;
-                            });
-                        }
-                        playGuitarChord(chord.notes, 20);
-                      }
+                      playFingerpickedChord(chord.notes);
                       chordIndexRef.current = (chordIndexRef.current + 1) % melody.chords.length;
 
                       // Vibrate strings
@@ -1195,7 +1239,7 @@ export const TreeOfLifeCanvas: React.FC = () => {
             {isGuitarActive && (
               <>
                 <span className="block mb-1">Strum the strings to play the current progression.</span>
-                <span className="opacity-60 text-xs">Each strum plays the next chord. 🤏 hold 2s switches melody. Hold hands close to dismiss.</span>
+                <span className="opacity-60 text-xs">Each strum plays a fingerpicked phrase. 🤏 hold 2s switches melody. Hold hands close to dismiss.</span>
               </>
             )}
           </p>
