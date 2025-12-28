@@ -118,6 +118,12 @@ const App: React.FC = () => {
           {/* Footer */}
           <div className="absolute bottom-8 flex flex-col items-center gap-2 text-gray-600 text-xs tracking-wider">
             <div>Use hand gestures to interact with masterpieces</div>
+            <a
+              className="text-gray-500 hover:text-gray-300 transition-colors underline underline-offset-4"
+              href="mailto:bmeyu@hotmail.com"
+            >
+              Contact me: bmeyu@hotmail.com
+            </a>
             <button
               type="button"
               onClick={() => setIsCreditsOpen(true)}
