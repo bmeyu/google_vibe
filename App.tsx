@@ -112,11 +112,11 @@ const App: React.FC = () => {
   const renderExperience = () => {
     switch (currentView) {
       case 'guernica':
-        return <GuernicaR3F />;
+        return <GuernicaR3F onExit={() => setCurrentView('landing')} />;
       case 'tree-of-life':
-        return <TreeOfLifeCanvas />;
+        return <TreeOfLifeCanvas onExit={() => setCurrentView('landing')} />;
       default:
-        return <StarryNightCanvas />;
+        return <StarryNightCanvas onExit={() => setCurrentView('landing')} />;
     }
   };
 

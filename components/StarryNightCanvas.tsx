@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { playPluckSound } from '../utils/audioUtils';
 import { segmentsIntersect } from '../utils/geoUtils';
+import { isOpenPalm } from '../utils/gestureUtils';
 import { Point, HandLandmark, MusicalNote } from '../types';
 import { DEFAULT_THEME } from '../data/themes';
 
@@ -124,7 +125,7 @@ interface EnergyBeam {
   color: string;
 }
 
-export const StarryNightCanvas: React.FC = () => {
+export const StarryNightCanvas: React.FC<{ onExit?: () => void }> = ({ onExit }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const webglCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -156,6 +157,8 @@ export const StarryNightCanvas: React.FC = () => {
 
   const latestLandmarksRef = useRef<HandLandmark[][] | null>(null);
   const prevFingerPosRef = useRef<Map<string, Point>>(new Map()); 
+  const openHoldStartRef = useRef<number | null>(null);
+  const openTriggeredRef = useRef(false);
   
   const [isLoaded, setIsLoaded] = useState(false);
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'initializing' | 'active' | 'error'>('idle');
@@ -414,6 +417,21 @@ export const StarryNightCanvas: React.FC = () => {
       const overlayCanvas = overlayCanvasRef.current;
       const overlayCtx = overlayCanvas?.getContext('2d');
       const landmarksData = latestLandmarksRef.current;
+      if (landmarksData && landmarksData.length >= 1 && onExit) {
+        const isOpen = isOpenPalm(landmarksData[0]);
+        const now = performance.now();
+        if (isOpen) {
+          if (openHoldStartRef.current === null) {
+            openHoldStartRef.current = now;
+          } else if (now - openHoldStartRef.current > 2000 && !openTriggeredRef.current) {
+            openTriggeredRef.current = true;
+            onExit();
+          }
+        } else {
+          openHoldStartRef.current = null;
+          openTriggeredRef.current = false;
+        }
+      }
 
       if (overlayCanvas && overlayCtx) {
         // Resize check

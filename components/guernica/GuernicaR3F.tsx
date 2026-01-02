@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrthographicCamera } from '@react-three/drei';
 import * as THREE from 'three';
@@ -7,6 +7,7 @@ import DrumSystem from './DrumSystem';
 import ShatterBackground, { ShatterHandle } from './ShatterBackground';
 import { Results, DrumTypeEnum as DrumType } from '../../types';
 import { COLORS } from './constants';
+import { isOpenPalm } from '../../utils/gestureUtils';
 
 // Error Boundary for Canvas errors
 interface ErrorBoundaryProps {
@@ -35,9 +36,11 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
-export const GuernicaR3F: React.FC = () => {
+export const GuernicaR3F: React.FC<{ onExit?: () => void }> = ({ onExit }) => {
   const handResultsRef = useRef<Results | null>(null);
   const shatterRef = useRef<ShatterHandle>(null);
+  const openHoldStartRef = useRef<number | null>(null);
+  const openTriggeredRef = useRef(false);
 
   // Callback from MediaPipe
   const onHandResults = useCallback((results: Results) => {
@@ -68,6 +71,34 @@ export const GuernicaR3F: React.FC = () => {
     const color = new THREE.Color(colorHex);
     shatterRef.current?.explode(intensity, color, position);
   }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!onExit) return;
+      const hands = handResultsRef.current?.multiHandLandmarks;
+      if (!hands || hands.length < 1) {
+        openHoldStartRef.current = null;
+        openTriggeredRef.current = false;
+        return;
+      }
+
+      const isOpen = isOpenPalm(hands[0]);
+      const now = performance.now();
+      if (isOpen) {
+        if (openHoldStartRef.current === null) {
+          openHoldStartRef.current = now;
+        } else if (now - openHoldStartRef.current > 2000 && !openTriggeredRef.current) {
+          openTriggeredRef.current = true;
+          onExit();
+        }
+      } else {
+        openHoldStartRef.current = null;
+        openTriggeredRef.current = false;
+      }
+    }, 120);
+
+    return () => clearInterval(interval);
+  }, [onExit]);
 
   return (
     <div className="w-full h-screen relative bg-black overflow-hidden font-sans select-none">

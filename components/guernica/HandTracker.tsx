@@ -70,6 +70,7 @@ const HandTracker: React.FC<HandTrackerProps> = ({ onResults, className }) => {
   useEffect(() => {
     let camera: any = null;
     let hands: any = null;
+    let active = true;
 
     const setupMediaPipe = async () => {
       if (!window.Hands) {
@@ -99,8 +100,11 @@ const HandTracker: React.FC<HandTrackerProps> = ({ onResults, className }) => {
         if (videoRef.current) {
           camera = new window.Camera(videoRef.current, {
             onFrame: async () => {
-              if (videoRef.current && hands) {
+              if (!active || !videoRef.current || !hands) return;
+              try {
                 await hands.send({ image: videoRef.current });
+              } catch {
+                // Ignore send errors when MediaPipe is tearing down.
               }
             },
             width: 640,
@@ -118,8 +122,10 @@ const HandTracker: React.FC<HandTrackerProps> = ({ onResults, className }) => {
     setupMediaPipe();
 
     return () => {
+      active = false;
       if (camera) camera.stop();
       if (hands) hands.close();
+      hands = null;
     };
   }, [onResults]);
 

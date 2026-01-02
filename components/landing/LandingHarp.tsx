@@ -373,30 +373,39 @@ const SceneContent: React.FC<{
   selectTrigger: boolean;
   onSelect: (view: ExperienceType) => void;
   handResultsRef: React.MutableRefObject<Results | null>;
-}> = ({ selectTrigger, onSelect, handResultsRef }) => {
+  isRotationPaused: boolean;
+}> = ({ selectTrigger, onSelect, handResultsRef, isRotationPaused }) => {
   const orbitGroupRef = useRef<THREE.Group>(null);
   const rotationOffsetRef = useRef(0);
   const rotationVelocityRef = useRef(0);
   const lastWristXRef = useRef<number | null>(null);
+  const autoSpinRef = useRef(0.05);
+  const autoAngleRef = useRef(0);
 
-  useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
-    const landmarks = handResultsRef.current?.multiHandLandmarks?.[0];
-    if (landmarks?.[0]) {
-      const wristX = landmarks[0].x;
-      if (lastWristXRef.current !== null) {
-        const dx = wristX - lastWristXRef.current;
-        if (dx > 0.002) {
-          rotationVelocityRef.current += dx * 1.4;
+  useFrame((_, delta) => {
+    if (!isRotationPaused) {
+      const landmarks = handResultsRef.current?.multiHandLandmarks?.[0];
+      if (landmarks?.[0]) {
+        const wristX = landmarks[0].x;
+        if (lastWristXRef.current !== null) {
+          const dx = wristX - lastWristXRef.current;
+          if (dx > 0.002) {
+            rotationVelocityRef.current += dx * 1.0;
+          }
         }
+        lastWristXRef.current = wristX;
       }
-      lastWristXRef.current = wristX;
+      rotationVelocityRef.current *= 0.9;
+      rotationOffsetRef.current += rotationVelocityRef.current;
+      autoSpinRef.current = lerp(autoSpinRef.current, 0.05, 0.08);
+    } else {
+      rotationVelocityRef.current *= 0.78;
+      rotationOffsetRef.current += rotationVelocityRef.current;
+      autoSpinRef.current = lerp(autoSpinRef.current, 0, 0.12);
     }
-
-    rotationVelocityRef.current *= 0.9;
-    rotationOffsetRef.current += rotationVelocityRef.current;
+    autoAngleRef.current += autoSpinRef.current * delta;
     if (orbitGroupRef.current) {
-      orbitGroupRef.current.rotation.y = t * 0.05 + rotationOffsetRef.current;
+      orbitGroupRef.current.rotation.y = autoAngleRef.current + rotationOffsetRef.current;
     }
   });
 
@@ -421,7 +430,13 @@ const SceneContent: React.FC<{
 const LandingHarpScene: React.FC<{ onSelect: (view: ExperienceType) => void }> = ({ onSelect }) => {
   const handResultsRef = useRef<Results | null>(null);
   const [isFist, setIsFist] = useState(false);
-  const lastGestureRef = useRef<{ open: number; fist: number }>({ open: 0, fist: 0 });
+  const [isRotationPaused, setIsRotationPaused] = useState(false);
+  const fistHoldStartRef = useRef<number | null>(null);
+  const fistTriggeredRef = useRef(false);
+  const openHoldStartRef = useRef<number | null>(null);
+  const openTriggeredRef = useRef(false);
+  const openStableFramesRef = useRef(0);
+  const lastWristXForPauseRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioArmedRef = useRef(false);
 
@@ -462,10 +477,48 @@ const LandingHarpScene: React.FC<{ onSelect: (view: ExperienceType) => void }> =
       const handState = getHandState(landmarks);
       const now = performance.now();
 
-      if (handState === 'fist' && now - lastGestureRef.current.fist > 400) {
-        lastGestureRef.current.fist = now;
-        setIsFist(true);
+      if (handState === 'open') {
+        const wristX = landmarks[0]?.x ?? null;
+        const lastWristX = lastWristXForPauseRef.current;
+        const dx = wristX !== null && lastWristX !== null
+          ? Math.abs(wristX - lastWristX)
+          : 0;
+        if (wristX !== null) {
+          lastWristXForPauseRef.current = wristX;
+        }
+
+        if (dx > 0.006) {
+          openHoldStartRef.current = null;
+          openTriggeredRef.current = false;
+          setIsRotationPaused(false);
+          openStableFramesRef.current = 0;
+        } else if (openHoldStartRef.current === null) {
+          openStableFramesRef.current += 1;
+          if (openStableFramesRef.current >= 8) {
+            openHoldStartRef.current = now;
+          }
+        } else if (now - openHoldStartRef.current > 1000 && !openTriggeredRef.current) {
+          openTriggeredRef.current = true;
+          setIsRotationPaused(true);
+        }
       } else {
+        openHoldStartRef.current = null;
+        openTriggeredRef.current = false;
+        setIsRotationPaused(false);
+        lastWristXForPauseRef.current = null;
+        openStableFramesRef.current = 0;
+      }
+
+      if (handState === 'fist') {
+        if (fistHoldStartRef.current === null) {
+          fistHoldStartRef.current = now;
+        } else if (now - fistHoldStartRef.current > 1000 && !fistTriggeredRef.current) {
+          fistTriggeredRef.current = true;
+          setIsFist(true);
+        }
+      } else {
+        fistHoldStartRef.current = null;
+        fistTriggeredRef.current = false;
         setIsFist(false);
       }
 
@@ -486,6 +539,7 @@ const LandingHarpScene: React.FC<{ onSelect: (view: ExperienceType) => void }> =
           selectTrigger={isFist}
           onSelect={onSelect}
           handResultsRef={handResultsRef}
+          isRotationPaused={isRotationPaused}
         />
       </Canvas>
 

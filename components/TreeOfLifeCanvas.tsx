@@ -5,6 +5,7 @@ import { initAudio, playGuitarNote } from '../utils/audioUtils';
 import { segmentsIntersect } from '../utils/geoUtils';
 import { loadSoundfontGuitar, frequencyToMidi } from '../utils/soundfontGuitar';
 import { Point, HandLandmark, MusicalNote } from '../types';
+import { isOpenPalm } from '../utils/gestureUtils';
 import { THEME_TREE_OF_LIFE } from '../data/themes';
 
 // Define the shape of MediaPipe results locally
@@ -207,7 +208,7 @@ interface GuitarString {
   vibration: number;
 }
 
-export const TreeOfLifeCanvas: React.FC = () => {
+export const TreeOfLifeCanvas: React.FC<{ onExit?: () => void }> = ({ onExit }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const webglCanvasRef = useRef<HTMLCanvasElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -245,6 +246,8 @@ export const TreeOfLifeCanvas: React.FC = () => {
 
   const latestLandmarksRef = useRef<HandLandmark[][] | null>(null);
   const prevFingerPosRef = useRef<Map<string, Point>>(new Map());
+  const openHoldStartRef = useRef<number | null>(null);
+  const openTriggeredRef = useRef(false);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [cameraStatus, setCameraStatus] = useState<'idle' | 'initializing' | 'active' | 'error'>('idle');
@@ -855,6 +858,22 @@ export const TreeOfLifeCanvas: React.FC = () => {
               glow,
             });
           });
+        }
+
+        if (landmarksData && landmarksData.length >= 1 && onExit) {
+          const isOpen = isOpenPalm(landmarksData[0]);
+          const now = performance.now();
+          if (isOpen) {
+            if (openHoldStartRef.current === null) {
+              openHoldStartRef.current = now;
+            } else if (now - openHoldStartRef.current > 2000 && !openTriggeredRef.current) {
+              openTriggeredRef.current = true;
+              onExit();
+            }
+          } else {
+            openHoldStartRef.current = null;
+            openTriggeredRef.current = false;
+          }
         }
 
         let detectedP1: Point | null = null;
